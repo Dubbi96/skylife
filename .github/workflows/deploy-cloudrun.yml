@@ -6,47 +6,62 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    # 저장소 Variables에 등록해 두면 환경 이관 쉬움
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.REGION }}
       REPO: ${{ vars.ARTIFACT_REPO }}
       IMAGE_NAME: ${{ vars.IMAGE_NAME }}
       SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-      IMAGE_URI: ${{ vars.REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}/${{ vars.IMAGE_NAME }}
-      RUNTIME_SA: skylife-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}
+      RUNTIME_SA: skylife-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
       GCS_BUCKET: ${{ vars.GCS_BUCKET_NAME }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: 1) Checkout
+        uses: actions/checkout@v4
 
-    - name: Auth to Google Cloud (with SA JSON)
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+      # ====== 인증 (옵션 1: 서비스계정 키 JSON, 빠른 경로) ======
+      - name: 2) Auth to Google Cloud (SA JSON)
+        uses: google-github-actions/auth@v2
+        with:
+          # GitHub Secrets -> GCP_SA_KEY (raw JSON 원문)
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ env.PROJECT_ID }}
+      # ====== 인증 (옵션 2: WIF, 키 없는 방식) ======
+      # 필요 시 위 step 대신 아래 주석 해제 + repository에 GCP_WIF_PROVIDER secret 설정
+      # permissions:
+      #   id-token: write
+      #   contents: read
+      # - name: 2) Auth to Google Cloud (WIF)
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+      #     service_account: github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
 
-    - name: Configure Docker auth
-      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      - name: 3) Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
-    - name: Build image
-      run: docker build -t $IMAGE_URI:${{ github.sha }} -t $IMAGE_URI:latest .
+      - name: 4) Configure Docker auth (Artifact Registry)
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-    - name: Push image
-      run: |
-        docker push $IMAGE_URI:${{ github.sha }}
-        docker push $IMAGE_URI:latest
+      - name: 5) Build image
+        run: docker build -t $IMAGE_URI:${{ github.sha }} -t $IMAGE_URI:latest .
 
-    - name: Deploy to Cloud Run
-      run: |
-        gcloud run deploy $SERVICE_NAME \
-          --image=$IMAGE_URI:${{ github.sha }} \
-          --platform=managed \
-          --region=$REGION \
-          --allow-unauthenticated \
-          --service-account=$RUNTIME_SA \
-          --set-env-vars "SPRING_PROFILES_ACTIVE=prod,gcs.bucket-name=$GCS_BUCKET"
+      - name: 6) Push image
+        run: |
+          docker push $IMAGE_URI:${{ github.sha }}
+          docker push $IMAGE_URI:latest
+
+      - name: 7) Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --image=$IMAGE_URI:${{ github.sha }} \
+            --platform=managed \
+            --region=$REGION \
+            --allow-unauthenticated \
+            --service-account=$RUNTIME_SA \
+            --set-env-vars "SPRING_PROFILES_ACTIVE=prod,gcs.bucket-name=$GCS_BUCKET"
