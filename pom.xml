@@ -43,14 +43,6 @@
             <version>2.6.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.github.napstr</groupId>
-            <artifactId>logback-discord-appender</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-
-
-
         <!-- Google Cloud Storage client library.  This library is used
              to interact with GCS for uploading, downloading and
              previewing files.  Actual runtime requires that the
