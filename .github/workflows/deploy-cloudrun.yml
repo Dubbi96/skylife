@@ -7,30 +7,28 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 저장소 Variables에 등록해 두면 환경 이관 쉬움
+    # 👉 여기서는 env 안에서 env 참조 금지! vars.*만 사용해서 완성값을 넣어주세요.
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.REGION }}
       REPO: ${{ vars.ARTIFACT_REPO }}
       IMAGE_NAME: ${{ vars.IMAGE_NAME }}
       SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-      IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}
-      RUNTIME_SA: skylife-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+      RUNTIME_SA: skylife-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
       GCS_BUCKET: ${{ vars.GCS_BUCKET_NAME }}
+      IMAGE_URI: ${{ vars.REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}/${{ vars.IMAGE_NAME }}
 
     steps:
       - name: 1) Checkout
         uses: actions/checkout@v4
 
-      # ====== 인증 (옵션 1: 서비스계정 키 JSON, 빠른 경로) ======
+      # (옵션1) 서비스계정 키 JSON 사용
       - name: 2) Auth to Google Cloud (SA JSON)
         uses: google-github-actions/auth@v2
         with:
-          # GitHub Secrets -> GCP_SA_KEY (raw JSON 원문)
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # ====== 인증 (옵션 2: WIF, 키 없는 방식) ======
-      # 필요 시 위 step 대신 아래 주석 해제 + repository에 GCP_WIF_PROVIDER secret 설정
+      # (옵션2) WIF 사용 시 위 스텝 대신 아래 주석 해제 + repository secrets에 GCP_WIF_PROVIDER 등록
       # permissions:
       #   id-token: write
       #   contents: read
