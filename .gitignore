@@ -1,0 +1,29 @@
+# Maven / Java
+target/
+*.log
+*.class
+*.jar
+*.war
+*.iml
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Node (혹시 포함시)
+node_modules/
+
+# Keys / secrets (실수 방지)
+*.keystore
+*.jks
+*.pem
+*.p12
+*.key
+*.crt
+*.enc
+*.json
+
+# 빌드 산출물
+/build/
+out/

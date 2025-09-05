@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      This is a simple Spring Boot project named "skylife".  Its only
+      responsibilities are to expose a handful of REST endpoints that
+      interact with Google Cloud Storage (GCS): uploading files,
+      downloading files, and serving image previews.  There are no
+      database dependencies or other extraneous modules included.
+    -->
+
+    <groupId>com.skylife</groupId>
+    <artifactId>skylife</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <!-- Inherit defaults from Spring Boot's parent POM -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <!-- Core web framework dependency -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.6.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.napstr</groupId>
+            <artifactId>logback-discord-appender</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+
+
+        <!-- Google Cloud Storage client library.  This library is used
+             to interact with GCS for uploading, downloading and
+             previewing files.  Actual runtime requires that the
+             application run with appropriate service account
+             credentials configured via environment variables or
+             application default credentials. -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-storage</artifactId>
+            <version>2.26.0</version>
+        </dependency>
+
+        <!-- Testing dependencies (optional).  Included here for
+             completeness; they can be removed if no tests will be
+             written. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Spring Boot Maven plugin to package the application
+                 into an executable JAR. -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
