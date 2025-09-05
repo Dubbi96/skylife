@@ -1,101 +1,72 @@
 package com.skylife.controller;
 
 import com.skylife.service.GcsService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 
-/**
- * REST controller exposing endpoints for interacting with Google Cloud
- * Storage.  All endpoints are under the base path {@code /api/v1/gcs}.
- *
- * <p>The controller delegates the actual storage operations to
- * {@link com.skylife.service.GcsService}.  It relies on the
- * {@code gcs.bucket-name} property to determine the default bucket
- * into which files are uploaded and from which files are retrieved.</p>
- */
 @RestController
 @RequestMapping("/gcs")
 public class GcsController {
 
-    private final GcsService gcsService;
+    private static final String BUCKET_NAME = "skylife-gcs-bucket";
 
-    /**
-     * The default GCS bucket name.  This value should be configured in
-     * {@code application.properties} or via environment variables.  It
-     * can also be overridden on a per‑request basis by passing a
-     * {@code bucketName} parameter.
-     */
-    @Value("${gcs.bucket-name}")
-    private String bucketName;
+    private final GcsService gcsService;
 
     public GcsController(GcsService gcsService) {
         this.gcsService = gcsService;
     }
 
     /**
-     * Upload a file to GCS.  The object name defaults to the original
-     * filename.  Optionally, a custom bucket name can be supplied as
-     * part of the query parameters.  On success, returns a simple
-     * confirmation message.
-     *
-     * @param file   the file to upload
-     * @param bucket optional override for the target bucket
-     * @return HTTP 200 with a confirmation message
-     * @throws IOException if reading the file fails
+     * 업로드: multipart 파일만 업로드
      */
-    @PostMapping("/upload")
-    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file,
-                                         @RequestParam(value = "bucket", required = false) String bucket) throws IOException {
-        String targetBucket = bucket != null ? bucket : bucketName;
-        String objectName = file.getOriginalFilename();
-        gcsService.uploadFile(targetBucket, objectName, file);
+    @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) throws IOException {
+        String objectName = (file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank())
+                ? file.getOriginalFilename()
+                : "upload-" + System.currentTimeMillis();
+        gcsService.uploadFile(BUCKET_NAME, objectName, file);
         return ResponseEntity.ok("File uploaded successfully: " + objectName);
     }
 
-    /**
-     * Download a file from GCS.  Returns the file contents with a
-     * Content-Disposition header set to attachment so that browsers
-     * trigger a download.
-     *
-     * @param objectName the name of the object in GCS
-     * @param bucket     optional override for the source bucket
-     * @return HTTP 200 with the file content
-     */
-    @GetMapping("/download/{objectName}")
-    public ResponseEntity<Resource> download(@PathVariable String objectName,
-                                             @RequestParam(value = "bucket", required = false) String bucket) {
-        String sourceBucket = bucket != null ? bucket : bucketName;
-        Resource resource = gcsService.downloadFile(sourceBucket, objectName);
-        String contentDisposition = "attachment; filename=\"" + objectName + "\"";
+    @GetMapping("/download/{objectName:.+}")
+    public ResponseEntity<Resource> download(@PathVariable String objectName) {
+        String decoded = URLDecoder.decode(objectName, StandardCharsets.UTF_8);
+        Resource body = gcsService.getForDownload(BUCKET_NAME, decoded);
+        String cd = "attachment; filename*=UTF-8''" + UriUtils.encode(decoded, StandardCharsets.UTF_8);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
-                .body(resource);
+                .header(HttpHeaders.CONTENT_DISPOSITION, cd)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
     }
 
     /**
-     * Preview an image from GCS.  Responds with an inline image; the
-     * client can display it directly without triggering a download.
-     *
-     * @param objectName the name of the image object
-     * @param bucket     optional override for the source bucket
-     * @return HTTP 200 with the image content and an inline
-     *         Content‑Disposition header
+     * 미리보기: GCS에 저장된 실제 Content-Type 을 사용해 inline 으로 표시
      */
-    @GetMapping("/preview/{objectName}")
-    public ResponseEntity<Resource> preview(@PathVariable String objectName,
-                                            @RequestParam(value = "bucket", required = false) String bucket) {
-        String sourceBucket = bucket != null ? bucket : bucketName;
-        Resource resource = gcsService.previewImage(sourceBucket, objectName);
+    @GetMapping("/preview/{objectName:.+}")
+    public ResponseEntity<Resource> preview(@PathVariable String objectName) {
+        String decoded = URLDecoder.decode(objectName, StandardCharsets.UTF_8);
+        var preview = gcsService.getForPreview(BUCKET_NAME, decoded);
+        String inlineCd = "inline; filename*=UTF-8''" + UriUtils.encode(preview.filename(), StandardCharsets.UTF_8);
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        try {
+            if (preview.contentType() != null && !preview.contentType().isBlank()) {
+                mediaType = MediaType.parseMediaType(preview.contentType());
+            }
+        } catch (Exception ignore) {
+            // 파싱 실패 시 기본값(octet-stream) 유지
+        }
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + objectName + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(resource);
+                .header(HttpHeaders.CONTENT_DISPOSITION, inlineCd)
+                .contentType(mediaType)
+                .body(preview.body());
     }
 }
