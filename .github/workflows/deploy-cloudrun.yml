@@ -35,7 +35,7 @@ jobs:
 
           # ② 파생 값 계산
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE_NAME}"
-          RUNTIME_SA="skylife-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+          RUNTIME_SA="github-deployer@optical-scarab-470906-s2.iam.gserviceaccount.com"
 
           # ③ GitHub 환경에 주입
           {
