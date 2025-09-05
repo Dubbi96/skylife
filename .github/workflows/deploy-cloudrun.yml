@@ -7,59 +7,78 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 👉 여기서는 env 안에서 env 참조 금지! vars.*만 사용해서 완성값을 넣어주세요.
-    env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.REGION }}
-      REPO: ${{ vars.ARTIFACT_REPO }}
-      IMAGE_NAME: ${{ vars.IMAGE_NAME }}
-      SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-      RUNTIME_SA: skylife-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-      GCS_BUCKET: ${{ vars.GCS_BUCKET_NAME }}
-      IMAGE_URI: ${{ vars.REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}/${{ vars.IMAGE_NAME }}
-
     steps:
       - name: 1) Checkout
         uses: actions/checkout@v4
 
-      # (옵션1) 서비스계정 키 JSON 사용
-      - name: 2) Auth to Google Cloud (SA JSON)
+      # ──[필수] GCP 인증(SA 키 JSON 방식)────────────────────────────────────────
+      #   - GitHub Secrets: GCP_SA_KEY (raw JSON)
+      - name: 2) Auth to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # (옵션2) WIF 사용 시 위 스텝 대신 아래 주석 해제 + repository secrets에 GCP_WIF_PROVIDER 등록
-      # permissions:
-      #   id-token: write
-      #   contents: read
-      # - name: 2) Auth to Google Cloud (WIF)
-      #   uses: google-github-actions/auth@v2
-      #   with:
-      #     workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-      #     service_account: github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
-
       - name: 3) Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.PROJECT_ID }}
 
-      - name: 4) Configure Docker auth (Artifact Registry)
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      - name: 5) Build image
-        run: docker build -t $IMAGE_URI:${{ github.sha }} -t $IMAGE_URI:latest .
-
-      - name: 6) Push image
+      # ──[핵심] 비어있는 vars 보정 + 공통 ENV 계산───────────────────────────────
+      - name: 4) Prepare environment defaults
+        shell: bash
         run: |
-          docker push $IMAGE_URI:${{ github.sha }}
-          docker push $IMAGE_URI:latest
+          # ① GitHub Repository Variables에서 값 읽기(비어있으면 기본값으로 대체)
+          PROJECT_ID="${{ vars.GCP_PROJECT_ID }}"; PROJECT_ID="${PROJECT_ID:-optical-scarab-470906-s2}"
+          REGION="${{ vars.REGION }}"; REGION="${REGION:-asia-northeast3}"
+          REPO="${{ vars.ARTIFACT_REPO }}"; REPO="${REPO:-skylife-repo}"
+          IMAGE_NAME="${{ vars.IMAGE_NAME }}"; IMAGE_NAME="${IMAGE_NAME:-skylife}"
+          SERVICE_NAME="${{ vars.SERVICE_NAME }}"; SERVICE_NAME="${SERVICE_NAME:-skylife-gcs}"
+          GCS_BUCKET_NAME="${{ vars.GCS_BUCKET_NAME }}"; GCS_BUCKET_NAME="${GCS_BUCKET_NAME:-skylife-gcs-bucket}"
 
-      - name: 7) Deploy to Cloud Run
+          # ② 파생 값 계산
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE_NAME}"
+          RUNTIME_SA="skylife-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+
+          # ③ GitHub 환경에 주입
+          {
+            echo "PROJECT_ID=${PROJECT_ID}"
+            echo "REGION=${REGION}"
+            echo "REPO=${REPO}"
+            echo "IMAGE_NAME=${IMAGE_NAME}"
+            echo "SERVICE_NAME=${SERVICE_NAME}"
+            echo "GCS_BUCKET=${GCS_BUCKET_NAME}"
+            echo "IMAGE_URI=${IMAGE_URI}"
+            echo "RUNTIME_SA=${RUNTIME_SA}"
+          } >> $GITHUB_ENV
+
+          echo "== Using settings =="
+          echo "PROJECT_ID=$PROJECT_ID"
+          echo "REGION=$REGION"
+          echo "REPO=$REPO"
+          echo "IMAGE_NAME=$IMAGE_NAME"
+          echo "SERVICE_NAME=$SERVICE_NAME"
+          echo "GCS_BUCKET=$GCS_BUCKET_NAME"
+          echo "IMAGE_URI=$IMAGE_URI"
+          echo "RUNTIME_SA=$RUNTIME_SA"
+
+      # ──Artifact Registry 로그인 (반드시 <REGION>-docker.pkg.dev 형태)──────────
+      - name: 5) Configure Docker auth (Artifact Registry)
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      # ──이미지 빌드/푸시────────────────────────────────────────────────────────
+      - name: 6) Build image
+        run: docker build -t "$IMAGE_URI:${{ github.sha }}" -t "$IMAGE_URI:latest" .
+
+      - name: 7) Push image
         run: |
-          gcloud run deploy $SERVICE_NAME \
-            --image=$IMAGE_URI:${{ github.sha }} \
+          docker push "$IMAGE_URI:${{ github.sha }}"
+          docker push "$IMAGE_URI:latest"
+
+      # ──Cloud Run 배포─────────────────────────────────────────────────────────
+      - name: 8) Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE_NAME" \
+            --image="$IMAGE_URI:${{ github.sha }}" \
             --platform=managed \
-            --region=$REGION \
+            --region="$REGION" \
             --allow-unauthenticated \
-            --service-account=$RUNTIME_SA \
+            --service-account="$RUNTIME_SA" \
             --set-env-vars "SPRING_PROFILES_ACTIVE=prod,gcs.bucket-name=$GCS_BUCKET"
